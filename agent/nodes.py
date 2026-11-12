@@ -45,6 +45,12 @@ present a risk factor or warning as a contraindication.
 If the context does not contain the answer, reply with exactly: INSUFFICIENT"""
 
 OFF_TOPIC = "The question is outside what the drug labels and patient data cover."
+# WHY: a bare refusal leaves the user stuck. Broad questions ("what does the
+# label say?") fail because only 5 passages are read, so say how to narrow it.
+NARROW_HINT = (
+    "Try asking about one topic for one drug, such as its uses, dose, "
+    "contraindications, interactions or side effects."
+)
 NOT_SAFE_NOTE = (
     "Nothing was flagged in the graph for this date. That is not a statement "
     "that the drug is safe: the graph holds only 12 drugs and the label "
@@ -253,6 +259,6 @@ def fallback(state: AgentState) -> dict:
     """Refuse, and say why."""
     reason = state.get("reason") or (
         f"The drug labels I searched did not clearly answer it after "
-        f"{state.get('attempts', 0)} attempts (limit {MAX_ATTEMPTS})."
+        f"{state.get('attempts', 0)} attempts (limit {MAX_ATTEMPTS}). {NARROW_HINT}"
     )
     return {**low_confidence(reason), "trace": entry("fallback", reason)}
