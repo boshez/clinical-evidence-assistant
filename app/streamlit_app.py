@@ -26,7 +26,8 @@ EXAMPLES = [
     "Who should not take metformin?",
     "Can patient TEST_RESOLVED take spironolactone on 2026-06-01?",
     "Can patient TEST_TAKES_NOW start ibuprofen on 2026-06-01?",
-    "What is the readmission risk for patient P00017?",
+    "Can patient P00313 take metformin on 2026-06-01?",
+    "What is the readmission risk for patient P00313?",
     "Does metformin interact with grapefruit juice?",
 ]
 ROUTE_NAMES = {
@@ -189,8 +190,11 @@ def show_sidebar() -> None:
         "**3. A patient's readmission risk**\n"
         "give a patient ID.\n\n"
         f"**The 12 drugs:** {', '.join(DRUGS)}.\n\n"
-        "**Test patients:** TEST_ACTIVE, TEST_RESOLVED, TEST_FUTURE, "
-        "TEST_BOUNDARY, TEST_TAKES_NOW.\n\n"
+        "**Patients for both 2 and 3:** P00163, P00313 (synthetic, in the "
+        "graph and the risk file).\n\n"
+        "**Patients for 2 only:** TEST_ACTIVE, TEST_RESOLVED, TEST_FUTURE, "
+        "TEST_BOUNDARY, TEST_TAKES_NOW. These are hand-made to show the date "
+        "rule and have no risk score.\n\n"
         "It refuses anything the labels do not state. That is deliberate: "
         "a wrong answer is worse than no answer."
     )
@@ -203,7 +207,7 @@ def show_ask() -> None:
     with st.form("question_form"):
         typed = st.text_input("Type any question", placeholder=EXAMPLES[0])
         picked = st.selectbox(
-            "or pick a ready-made one (5 examples, then the 40 test questions)",
+            "or pick a ready-made one (6 examples, then the 40 test questions)",
             ready,
         )
         submitted = st.form_submit_button("Ask")

@@ -39,7 +39,9 @@ def readmission_risk(patient_id: str) -> dict:
     with RISK_CSV.open(newline="") as f:
         rows = [r for r in csv.DictReader(f) if r["patient_id"] == patient_id]
     if not rows:
-        raise ValueError(f"unknown patient: {patient_id}")
+        # WHY this wording: the hand-made TEST_ patients are in the graph but
+        # not in this file, so "unknown patient" would be misleading.
+        raise ValueError(f"no readmission score on file for patient {patient_id}")
     # WHY the latest admission: the file has one row per hospital stay, and
     # "this patient's risk" most naturally means the most recent one.
     # ISO dates sort correctly as plain text.
