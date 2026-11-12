@@ -2,6 +2,7 @@
 
 Run from the project folder with:  streamlit run app/streamlit_app.py
 """
+import csv
 import os
 import sys
 from pathlib import Path
@@ -16,6 +17,10 @@ if str(ROOT) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from agent.run import run_agent  # noqa: E402
+from eval.agent_eval import load_runs  # noqa: E402
+from eval.faithfulness import load_judged  # noqa: E402
+from eval.gold import RESULTS_DIR, load_gold  # noqa: E402
+from ingest.fetch_labels import DRUGS  # noqa: E402
 
 EXAMPLES = [
     "Who should not take metformin?",
@@ -101,27 +106,114 @@ def ask(question: str) -> None:
             st.error(f"The assistant could not run: {error}")
 
 
-st.set_page_config(page_title="Clinical Evidence Assistant", layout="wide")
-st.title("Clinical Evidence Assistant")
-st.caption(
-    "A portfolio demo, not medical advice. Answers come from 12 openFDA drug "
-    "labels and a graph of synthetic patients. It refuses when the labels do "
-    "not contain the answer."
-)
+def load_test_results() -> list[dict]:
+    """Join each gold question with what the agent did on the saved run."""
+    runs = {r["id"]: r for r in load_runs()}
+    rows = []
+    for gold in load_gold():
+        run = runs.get(gold["id"])
+        if run is None:
+            continue
+        should_answer = gold["answerable"] == "y"
+        rows.append({
+            "id": gold["id"],
+            "question": gold["question"],
+            "should": "answer" if should_answer else "refuse",
+            "did": "answered" if run["answered"] else "refused",
+            "correct": should_answer == run["answered"],
+            "gold_answer": gold["gold_answer"],
+            "source_quote": gold["source_quote"],
+            "agent_answer": run["answer"],
+            "verified": gold["verified"] == "y",
+        })
+    return rows
 
-with st.form("question_form"):
-    typed = st.text_input("Ask a question", placeholder=EXAMPLES[0])
-    submitted = st.form_submit_button("Ask")
-if submitted and typed.strip():
-    ask(typed.strip())
 
-st.caption("Or try an example:")
-for example in EXAMPLES:
-    if st.button(example):
-        ask(example)
+def show_scores(rows: list[dict]) -> None:
+    """The headline numbers, computed from the saved result files."""
+    can = [r for r in rows if r["should"] == "answer"]
+    cannot = [r for r in rows if r["should"] == "refuse"]
+    judged = [j for j in load_judged() if j["n_claims"]]
+    with (RESULTS_DIR / "retrieval.csv").open(newline="") as f:
+        ranks = [int(r["strict_rank"]) for r in csv.DictReader(f)]
+    one, two, three, four = st.columns(4)
+    one.metric("Answerable questions answered",
+               f"{sum(r['correct'] for r in can)} / {len(can)}")
+    two.metric("Unanswerable questions refused",
+               f"{sum(r['correct'] for r in cannot)} / {len(cannot)}")
+    three.metric("Claims supported by the label text",
+                 f"{sum(j['n_supported'] for j in judged)} / "
+                 f"{sum(j['n_claims'] for j in judged)}")
+    four.metric("Search finds the exact passage in top 5",
+                f"{sum(0 < r <= 5 for r in ranks)} / {len(ranks)}")
 
-result = st.session_state.get("result")
-if result:
+
+def show_tests() -> None:
+    """The evaluation: scores, limits, and every test question."""
+    rows = load_test_results()
+    show_scores(rows)
+    st.caption(
+        "One run of 40 questions written from the label text; 8 have no answer "
+        "in the labels on purpose. Claim support was marked by a second "
+        "language model. These numbers show no failures on this set, not zero "
+        "error. Search alone misses some passages; the rewrite-and-retry step "
+        f"recovers most of them. Gold answers hand-verified so far: "
+        f"{sum(r['verified'] for r in rows)} of {len(rows)}."
+    )
+    st.dataframe(
+        [{"id": r["id"], "question": r["question"], "should": r["should"],
+          "did": r["did"], "correct": "yes" if r["correct"] else "NO"}
+         for r in rows],
+        hide_index=True, width="stretch",
+    )
+    labels = {f"{r['id']}  {r['question']}": r for r in rows}
+    row = labels[st.selectbox("Look at one test question", list(labels))]
+    if row["should"] == "answer":
+        st.markdown(f"**Expected answer:** {row['gold_answer']}")
+        st.markdown(f"**Label sentence behind it:** \"{row['source_quote']}\"")
+    else:
+        st.markdown("**Expected:** refuse, because the label does not cover this.")
+    st.markdown("**What the assistant said:**")
+    st.info(plain_hyphens(row["agent_answer"]))
+
+
+def show_sidebar() -> None:
+    """What the assistant is and what it can be asked."""
+    st.sidebar.header("What you can ask")
+    st.sidebar.markdown(
+        "**1. What a drug label says**\n"
+        "uses, who should not take it, dose, interactions, side effects, "
+        "overdose.\n\n"
+        "**2. Is a drug a problem for a patient on a date?**\n"
+        "give a patient ID, a drug and a date.\n\n"
+        "**3. A patient's readmission risk**\n"
+        "give a patient ID.\n\n"
+        f"**The 12 drugs:** {', '.join(DRUGS)}.\n\n"
+        "**Test patients:** TEST_ACTIVE, TEST_RESOLVED, TEST_FUTURE, "
+        "TEST_BOUNDARY, TEST_TAKES_NOW.\n\n"
+        "It refuses anything the labels do not state. That is deliberate: "
+        "a wrong answer is worse than no answer."
+    )
+    st.sidebar.caption("Answers take about 20 seconds on the free model tier.")
+
+
+def show_ask() -> None:
+    """The question box, the ready-made questions, and the result."""
+    ready = [""] + EXAMPLES + [r["question"] for r in load_gold()]
+    with st.form("question_form"):
+        typed = st.text_input("Type any question", placeholder=EXAMPLES[0])
+        picked = st.selectbox(
+            "or pick a ready-made one (5 examples, then the 40 test questions)",
+            ready,
+        )
+        submitted = st.form_submit_button("Ask")
+    question = typed.strip() or picked
+    if submitted and question:
+        ask(question)
+
+    result = st.session_state.get("result")
+    if not result:
+        return
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Answer")
@@ -132,3 +224,18 @@ if result:
     with right:
         st.subheader("Reasoning trace")
         show_trace(result)
+
+
+st.set_page_config(page_title="Clinical Evidence Assistant", layout="wide")
+st.title("Clinical Evidence Assistant")
+st.caption(
+    "A portfolio demo, not medical advice. Answers come from 12 openFDA drug "
+    "labels and a graph of synthetic patients. It refuses when the labels do "
+    "not contain the answer."
+)
+show_sidebar()
+ask_tab, tests_tab = st.tabs(["Ask a question", "How it was tested"])
+with ask_tab:
+    show_ask()
+with tests_tab:
+    show_tests()
