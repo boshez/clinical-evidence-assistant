@@ -125,6 +125,15 @@ def test_risk_uses_latest_admission() -> None:
     assert str(result["score"]) in state["answer"]
 
 
+def test_loosely_typed_patient_id_is_tidied() -> None:
+    """13. '00017' and 'p17' both mean P00017; TEST_ ids are left alone."""
+    for typed in ("00017", "p17", "P00017"):
+        llm, _ = scripted({"route": "risk", "patient_id": typed})
+        state = run_agent("readmission risk?", llm)
+        assert state["patient_id"] == "P00017" and state["confidence"] == "ok"
+    assert nodes.clean_patient_id("test_active") == "TEST_ACTIVE"
+
+
 def test_off_topic_route_is_refused() -> None:
     """11. Router says refuse: straight to fallback, nothing retrieved."""
     llm, _ = scripted({"route": "refuse"})

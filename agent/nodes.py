@@ -75,7 +75,8 @@ def router(state: AgentState, llm: LLM) -> dict:
     # critique step can still refuse. No other route has that safety net.
     if route not in ROUTES:
         route = "guideline"
-    patient_id, drug = reply.get("patient_id"), reply.get("drug")
+    patient_id = clean_patient_id(reply.get("patient_id"))
+    drug = reply.get("drug")
     update = {
         "route": route,
         "patient_id": patient_id,
@@ -94,6 +95,17 @@ def router(state: AgentState, llm: LLM) -> dict:
         k: update.get(k) for k in ("patient_id", "drug", "as_of", "reason")
     })
     return update
+
+
+def clean_patient_id(value: object) -> str | None:
+    """Tidy a typed patient ID: '163', '00163' or 'p163' becomes 'P00163'."""
+    # WHY: IDs in the data are 'P' plus five digits, but people type them
+    # loosely. Without this, a real patient is refused as unknown.
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().upper()
+    digits = text[1:] if text.startswith("P") else text
+    return f"P{int(digits):05d}" if digits.isdigit() else text
 
 
 def missing_argument(route: str, patient_id: str | None, drug: str | None) -> str:

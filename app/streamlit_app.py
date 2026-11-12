@@ -126,6 +126,7 @@ def load_test_results() -> list[dict]:
             "source_quote": gold["source_quote"],
             "agent_answer": run["answer"],
             "verified": gold["verified"] == "y",
+            "reviewed": gold.get("second_review") == "y",
         })
     return rows
 
@@ -158,7 +159,9 @@ def show_tests() -> None:
         "in the labels on purpose. Claim support was marked by a second "
         "language model. These numbers show no failures on this set, not zero "
         "error. Search alone misses some passages; the rewrite-and-retry step "
-        f"recovers most of them. Gold answers hand-verified so far: "
+        f"recovers most of them. Each gold answer was re-read against its "
+        f"label passage in a second review ({sum(r['reviewed'] for r in rows)} "
+        f"of {len(rows)}); personally hand-verified by the author so far: "
         f"{sum(r['verified'] for r in rows)} of {len(rows)}."
     )
     st.dataframe(
